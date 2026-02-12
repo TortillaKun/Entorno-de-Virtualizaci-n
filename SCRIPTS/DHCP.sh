@@ -13,6 +13,8 @@ done
  [[ "$1" == "0.0.0.0" ]] && return 1
  [[ $oc4 -eq 0 || $oc4 -eq 255 ]] && return 1
 
+ [[ $oc1 -eq 127 ]] && return 1
+ [[ $oc1 -eq 0 ]] && return 1
  return 0
 }
 
@@ -131,8 +133,19 @@ configurar_dhcp() {
  fi
 
  GATEWAY=${IP_SERVIDOR}
- DNS="1.1.1.1"
- LEASE="300"
+
+#DNS Y TIEMPO
+read -p "DNS1 O enter para uno automatico: " DNS1
+read -p "DNS2 opcional: " DNS2
+
+[ -z "$DNS1" ] && DNS1="8.8.8.8"
+[ -z "$DNS2" ] && DNS_CONFIG="option domain-name-servers $DNS1;" || DNS_CONFIG="option domain-name-servers $DNS1, $DNS2;"
+
+read -p  "Tiempo default 300 (enter): " LEASE_DEFAULT
+read -p "Tiempo de asignacion maxima (300 Normalmente): " LEASE_MAX
+
+[ -z "$LEASE_DEFAULT" ] && LEASE_DEFAULT=300
+[ -z "$LEASE_MAX" ] && LEASE_MAX=300
 
  mascara=$(obtener_mascara "$IP_SERVIDOR")
  red=${IP_SERVIDOR%.*}.0
@@ -143,14 +156,14 @@ configurar_dhcp() {
  sudo ip link set enp0s8 up
 
   sudo tee /etc/dhcpd.conf >/dev/null <<EOF
- default-lease-time $LEASE;
- max-lease-time $LEASE;
+ default-lease-time $LEASE_DEFAULT;
+ max-lease-time $LEASE_MAX;
  authoritative;
 
  subnet $red netmask $mascara {
  range $IP_RANGO_INICIAL $IP_FINAL;
  option routers $GATEWAY;
- option domain-name-servers $DNS;
+ $DNS_CONFIG
 }
 EOF
 
@@ -167,19 +180,25 @@ guardaryreiniciar() {
  echo "Verificando la configuracion"
 
  if sudo dhcpd -t &>/dev/null; then
-  sudo systemctl restart dhcpd &>/dev/null
   sudo systemctl enable dhcpd &>/dev/null
+ if sudo systemctl restart dhcpd &>/dev/null; then
   echo "Configuracion guardada y reinicio aplicado"
  else
   echo "Error la configuracion no se aplico.No reinicio"
  fi
+ else
+   echo "ERROR"
+fi
 }
 
 
 monitoreo() {
  echo "Estado del servidor DHCP"
- systemctl is-active dhcpd
-
+if systemctl is-active --quiet dhcpd; then
+ echo "Activado"
+else
+ echo "Desactivado"
+fi
  echo ""
  echo "Clientes conectados"
  grep "lease " /var/lib/dhcpd/dhcpd.leases 2>/dev/null
@@ -187,14 +206,16 @@ monitoreo() {
 
 
 reset_dhcp() {
- sudo systemctl stop dhcpd
- sudo rm -f /var/lib/dhcpd/dhcpd.leases
- sudo touch /var/lib/dhcpd/dhcpd.leases
- sudo chown dhcpd:dhcpd /var/lib/dhcpd/dhcpd.leases
- sudo systemctl start dhcpd
- echo "Reset completo y clientes eliminados"
-}
+ sudo systemctl stop dhcpd 2>/dev/null
+ sudo systemctl disable dhcpd 2>/dev/null
 
+ sudo rm -f /etc/dhcpd.conf >/dev/null 2>&1
+ sudo rm -f /var/lib/dhcpd/dhcpd.leases >/dev/null 2>&1
+
+ sudo dnf remove -y dhcp-server >/dev/null 2>&1
+
+ echo "Reset completo, DHCP eliminado y clientes eliminados"
+}
 
 
 #CASE Y EJECUCION
