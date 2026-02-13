@@ -142,7 +142,7 @@ read -p "DNS2 opcional: " DNS2
 [ -z "$DNS2" ] && DNS_CONFIG="option domain-name-servers $DNS1;" || DNS_CONFIG="option domain-name-servers $DNS1, $DNS2;"
 
 read -p  "Tiempo default 300 (enter): " LEASE_DEFAULT
-read -p "Tiempo de asignacion maxima (300 Normalmente): " LEASE_MAX
+read -p "Tiempo maxima (300 Normalmente): " LEASE_MAX
 
 [ -z "$LEASE_DEFAULT" ] && LEASE_DEFAULT=300
 [ -z "$LEASE_MAX" ] && LEASE_MAX=300
