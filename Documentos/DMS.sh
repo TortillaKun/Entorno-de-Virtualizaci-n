@@ -142,8 +142,16 @@ chmod 640 $ZONA
 #listar dominios
 listar() {
  echo "Dominios configurados:"
- grep zone $LOCALCONF
 
+
+
+for ZONA in $ZONADIR/db.*; do
+[ -f "$ZONA" ] || continue
+DOMINIO=$(basename "$ZONA" | sed 's/^db\.//')
+ IP=$(grep -E '^\s*@\s+IN\s+A\s+' "$ZONA" | awk '{print $4}')
+#mostrar resultado
+echo "$DOMINIO -> $IP"
+done
 }
 
 #desinstalar dns
@@ -167,6 +175,10 @@ case "$1" in
 
  agregar)
      agregar "$2" "$3"
+    ;;
+
+ listar)
+    listar
     ;;
 
  desinstalar)
