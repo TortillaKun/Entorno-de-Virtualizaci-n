@@ -154,6 +154,38 @@ echo "$DOMINIO -> $IP"
 done
 }
 
+eliminar_dominio() {
+
+DOMINIO="$1"
+
+if [ -z "$DOMINIO" ]; then
+ echo "Uso ./DNS.sh eliminar dominio.com"
+exit 1
+fi
+
+
+ZONA_FILE="/var/named/db.$DOMINIO"
+echo "Eliminando zona $DOMINIO"
+
+#eliminar bloque named.conf
+sudo sed -i "/zone \"$DOMINIO\"/,/};/d" /etc/named.conf
+
+#eliminar archivo de zona
+if [ -f "$ZONA_FILE" ]; then
+ sudo rm -f "$ZONA_FILE"
+ echo "Archivo zona eliminado"
+else
+ echo "Archivo no econtrado"
+fi
+
+if sudo named-checkconf &>/dev/null; then
+ sudo systemctl restart named
+ echo "Dominio eliminado correctamente"
+else
+ echo "Error en configuracion"
+fi
+}
+
 #desinstalar dns
 desinstalar() {
  dnf remove -y bind bind-utils
@@ -181,6 +213,10 @@ case "$1" in
     listar
     ;;
 
+ eliminar)
+    eliminar_dominio "$2"
+    ;;
+
  desinstalar)
     desinstalar
    ;;
@@ -191,8 +227,9 @@ case "$1" in
  echo "Parametros DNS"
  echo "./DNS.sh instalar"
  echo "./DNS.sh estado"
- echo "./DNS.sh agregar"
+ echo "./DNS.sh agregar dominio.com"
  echo "./DNS.sh listar"
+ echo "./DNS.sh eliminar dominio.com"
  echo "./DNS,sh desinstalar"
  ;;
 
