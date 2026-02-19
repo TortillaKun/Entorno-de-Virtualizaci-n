@@ -1,5 +1,6 @@
 param($accion)
 $ConfirmPreference = "None"
+$ErrorActionPreference = "SilentlyContinue"
 
 
 # VALIDACIONES
@@ -10,7 +11,7 @@ function IPValidacion {
 
     if ($ip -notmatch '^([0-9]{1,3}\.){3}[0-9]{1,3}$') { return $false }
 
-º1    $partes = $ip -split '\.'
+$partes = $ip -split '\.'
     foreach ($o in $partes) {
         if ([int]$o -lt 0 -or [int]$o -gt 255) { return $false }
     }
@@ -144,20 +145,27 @@ function Configurar-DHCP {
     $ipActual = Get-NetIPAddress -InterfaceAlias $interfaz -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.PrefixOrigin -eq "Manual"}
     if ($ipActual) { $ipActual | Remove-NetIPAddress -Confirm:$false -ErrorAction SilentlyContinue | Out-Null }
 
-    New-NetIPAddress -InterfaceAlias $interfaz -IPAddress $IP_SERVIDOR -PrefixLength 24 | Out-Null
+    New-NetIPAddress -InterfaceAlias $interfaz -IPAddress $IP_SERVIDOR -PrefixLength 24 -ErrorAction SilentlyContinue | Out-Null
 
     Remove-DhcpServerv4Scope -ScopeId $red -Force -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
 
     Add-DhcpServerv4Scope -Name "RedDHCP" -StartRange $IP_RANGO_INICIAL -EndRange $IP_FINAL -SubnetMask $mascara | Out-Null
 
-    Set-DhcpServerv4OptionValue -ScopeId $red -Router $GATEWAY -DnsServer $DNS_CONFIG | Out-Null
+if([string]::IsNullOrEmpty($DNS2)) {
+   
+    Set-DhcpServerv4OptionValue -ScopeId $red -Router $GATEWAY -DnsServer $DNS1 -ErrorAction SilentlyContinue | Out-Null
+}
+ else {
 
+   Set-DhcpServerv4OptionValue -ScopeId $red -Router $GATEWAY -DnsServer @($DNS1,$DNS2) -ErrorAction SilentlyContinue | Out-Null
+
+}
     # Lease duration
-    Set-DhcpServerv4Scope -ScopeId $red -LeaseDuration ([TimeSpan]::FromSeconds($LEASE_DEFAULT)) | Out-Null
+    Set-DhcpServerv4Scope -ScopeId $red -LeaseDuration ([TimeSpan]::FromSeconds($LEASE_DEFAULT)) -ErrorAction SilentlyContinue | Out-Null
 
-    Set-DhcpServerv4Scope -ScopeId $red -State Active | Out-Null
+    Set-DhcpServerv4Scope -ScopeId $red -State Active -ErrorAction SilentlyContinue | Out-Null
 
-    Restart-Service DHCPServer
+    Restart-Service DHCPServer -ErrorAction SilentlyContinue
 
     Write-Host ""
     Write-Host "Configuracion aplicada"
