@@ -11,7 +11,6 @@ validarip() {
 done
 
  [[ "$1" == "0.0.0.0" ]] && return 1
- [[ $oc4 -eq 0 || $oc4 -eq 255 ]] && return 1
 
  [[ $oc1 -eq 127 ]] && return 1
  [[ $oc1 -eq 0 ]] && return 1
@@ -21,7 +20,7 @@ done
 
 ipnum() {
  IFS='.' read -r oc1 oc2 oc3 oc4 <<< "$1"
- echo &(( (oc1<<24) + (oc2<<16) + (oc3<<8) + oc4 ))
+ echo $(( (oc1<<24) + (oc2<<16) + (oc3<<8) + oc4 ))
 }
 
 
@@ -49,15 +48,7 @@ sumaruno() {
 }
 
 obtener_mascara() {
- IFS='.' read -r oc1 _ <<< "$1"
-
- if (( oc1 <= 126 )); then
-  echo "255.0.0.0"
- elif (( oc1 <= 191 )); then
-  echo "255.255.0.0 "
- else
   echo "255.255.255.0"
-fi
 }
 
 
@@ -125,7 +116,7 @@ configurar_dhcp() {
  IP_SERVIDOR="$IP_INICIAL"
 
  #dhcp empieza desde ip + 1
- IP_RANGO_INCIAL=$(sumaruno "$IP_INICIAL")
+ IP_RANGO_INICIAL=$(sumaruno "$IP_INICIAL")
 
  if ! validar_rango "$IP_RANGO_INICIAL" "$IP_FINAL"; then
  echo "Error rango invalido Ip del servidor en uso"
