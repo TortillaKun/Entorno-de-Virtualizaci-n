@@ -25,6 +25,13 @@ function instalar() {
         Start-Service -Name DNS
         Write-Host "DNS instalado correctamente"
     }
+
+    $interfaz = "Ethernet 2"
+    $ipServidor = (Get-NetIPAddress -InterfaceAlias $interfaz -AddressFamily IPv4).IPAddress
+
+    Set-DnsClientServerAddress `
+        -InterfaceAlias $interfaz `
+        -ServerAddresses $ipServidor
 }
 
 function estado() {

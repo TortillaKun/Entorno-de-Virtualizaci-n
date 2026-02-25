@@ -97,6 +97,20 @@ function Instalar-DHCP {
 
 # CONFIGURAR DHCP
 function Configurar-DHCP {
+
+    $interfaz = "Ethernet 2"
+    $adapter = Get-NetAdapter -Name $interfaz -ErrorAction SilentlyContinue
+
+    if (-not $adapter) {
+        Write-Host "No se encontro Ethernet 2"
+        return
+    }
+
+    if ($adapter.Status -ne "Up") {
+        Write-Host "Ethernet 2 no esta activa"
+        return
+    }
+
     do {
         $IP_INICIAL = Read-Host "IP inicial (sera IP del servidor)"
         if (-not (Validar-IP $IP_INICIAL)) {
@@ -133,28 +147,14 @@ function Configurar-DHCP {
     $partes = $IP_SERVIDOR -split '\.'
     $red = "$($partes[0]).$($partes[1]).$($partes[2]).0"
 
-    $interfaz = (Get-NetIPAddress -AddressFamily IPv4 |
-        Where-Object { $_.IPAddress -notlike "10.*" -and $_.IPAddress -ne "127.0.0.1" } |
-        Select-Object -First 1).InterfaceAlias
-
-    if (-not $interfaz) {
-        Write-Host "No se detecto interfaz valida"
-        return
-    }
-
-    $ipActual = Get-NetIPAddress -InterfaceAlias $interfaz -AddressFamily IPv4 -ErrorAction SilentlyContinue |
-                Where-Object { $_.PrefixOrigin -eq "Manual" }
-
-    if ($ipActual) {
-        $ipActual | Remove-NetIPAddress  -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
-    }
+    Get-NetIPAddress -InterfaceAlias $interfaz -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Remove-NetIPAddress -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
 
     New-NetIPAddress `
         -InterfaceAlias $interfaz `
         -IPAddress $IP_SERVIDOR `
         -PrefixLength 24 | Out-Null
 
-    Get-DhcpServerv4Scope -ErrorAction SilentlyContinue | Out-Null
     Remove-DhcpServerv4Scope `
         -ScopeId $red `
         -Force `
@@ -170,7 +170,7 @@ function Configurar-DHCP {
     Set-DhcpServerv4OptionValue `
         -ScopeId $red `
         -Router $IP_SERVIDOR `
-        -DnsServer 1.1.1.1 | Out-Null
+        -DnsServer $IP_SERVIDOR | Out-Null
 
     Set-DhcpServerv4Scope `
         -ScopeId $red `
