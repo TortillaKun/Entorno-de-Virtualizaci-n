@@ -8,24 +8,21 @@ validarip() {
 
  for o in $oc1 $oc2 $oc3 $oc4; do
  [[ $o -ge 0 && $o -le 255 ]] || return 1
-done
+ done
 
  [[ "$1" == "0.0.0.0" ]] && return 1
-
  [[ $oc1 -eq 127 ]] && return 1
  [[ $oc1 -eq 0 ]] && return 1
  return 0
 }
-
 
 ipnum() {
  IFS='.' read -r oc1 oc2 oc3 oc4 <<< "$1"
  echo $(( (oc1<<24) + (oc2<<16) + (oc3<<8) + oc4 ))
 }
 
-
 validar_rango() {
-[[ $(ipnum "$2") -ge $(ipnum "$1") ]]
+ [[ $(ipnum "$2") -ge $(ipnum "$1") ]]
 }
 
 sumaruno() {
@@ -40,7 +37,7 @@ sumaruno() {
  echo "$oc1.$oc2.$oc3.$oc4"
 }
 
- misma_red() {
+misma_red() {
  IFS='.' read -r a1 a2 a3 _ <<< "$1"
  IFS='.' read -r b1 b2 b3 _ <<< "$2"
 
@@ -48,7 +45,7 @@ sumaruno() {
 }
 
 obtener_mascara() {
-  echo "255.255.255.0"
+ echo "255.255.255.0"
 }
 
 
@@ -63,22 +60,21 @@ verificar_dhcp() {
 instalar_dhcp() {
  if rpm -q dhcp-server &>/dev/null; then
  echo " "
- read -p "Quieres Reinstalar y sobrescribir ? (s\n): " opcion
+ read -p "Quieres Reinstalar y sobrescribir ? (s/n): " opcion
 
  if [[ $opcion == "s" || $opcion == "S" ]]; then
   echo "Reinstalando DHCP"
- sudo urpmi --replacepkgs --auto dhcp-server &>/dev/null
+  sudo urpmi --replacepkgs --auto dhcp-server &>/dev/null
   echo "Reinstalacion completa"
  else
   echo "Instalacion cancelada"
  fi
-  else
+ else
   echo "Instalando DHCP"
   sudo urpmi --auto dhcp-server &>/dev/null
   echo "instalacion completa"
  fi
 }
-
 
 configurar_dhcp() {
 
@@ -104,49 +100,58 @@ configurar_dhcp() {
 
  if ! misma_red "$IP_INICIAL" "$IP_FINAL"; then
  echo "Error Ip no pertenecen a la misma red"
- exit 1
+ return 1
  fi
 
  if ! validar_rango "$IP_INICIAL" "$IP_FINAL"; then
  echo "Rango invalido"
- exit 1
+ return 1
  fi
 
- # ip fija del servidor
  IP_SERVIDOR="$IP_INICIAL"
-
- #dhcp empieza desde ip + 1
  IP_RANGO_INICIAL=$(sumaruno "$IP_INICIAL")
 
  if ! validar_rango "$IP_RANGO_INICIAL" "$IP_FINAL"; then
  echo "Error rango invalido Ip del servidor en uso"
- exit 1
+ return 1
  fi
 
  GATEWAY=${IP_SERVIDOR}
 
-#DNS Y TIEMPO
-read -p "DNS1 O enter para uno automatico: " DNS1
-read -p "DNS2 opcional: " DNS2
+ # detectar interfaz ssh
+ INTERFAZ_SSH=$(ip route | grep default | awk '{print $5}')
 
-[ -z "$DNS1" ] && DNS1="8.8.8.8"
-[ -z "$DNS2" ] && DNS_CONFIG="option domain-name-servers $DNS1;" || DNS_CONFIG="option domain-name-servers $DNS1, $DNS2;"
+ # buscar otra interfaz distinta
+ INTERFAZ_DHCP=$(ip -o link show | awk -F': ' '{print $2}' | grep -v lo | grep -v "$INTERFAZ_SSH" | head -n1)
 
-read -p  "Tiempo default 300 (enter): " LEASE_DEFAULT
-read -p "Tiempo maxima (300 Normalmente): " LEASE_MAX
+ if [ -z "$INTERFAZ_DHCP" ]; then
+  echo "No se encontro interfaz disponible"
+  return 1
+ fi
 
-[ -z "$LEASE_DEFAULT" ] && LEASE_DEFAULT=300
-[ -z "$LEASE_MAX" ] && LEASE_MAX=300
+ echo "Interfaz ssh detectada: $INTERFAZ_SSH"
+ echo "Interfaz dhcp usada: $INTERFAZ_DHCP"
+
+ read -p "DNS1 O enter para uno automatico: " DNS1
+ read -p "DNS2 opcional: " DNS2
+
+ [ -z "$DNS1" ] && DNS1="8.8.8.8"
+ [ -z "$DNS2" ] && DNS_CONFIG="option domain-name-servers $DNS1;" || DNS_CONFIG="option domain-name-servers $DNS1, $DNS2;"
+
+ read -p  "Tiempo default 300 (enter): " LEASE_DEFAULT
+ read -p "Tiempo maxima (300 Normalmente): " LEASE_MAX
+
+ [ -z "$LEASE_DEFAULT" ] && LEASE_DEFAULT=300
+ [ -z "$LEASE_MAX" ] && LEASE_MAX=300
 
  mascara=$(obtener_mascara "$IP_SERVIDOR")
  red=${IP_SERVIDOR%.*}.0
 
- #interfaz enp0s8 config
- sudo ip addr flush dev enp0s8
- sudo ip addr add $IP_SERVIDOR/24 dev enp0s8
- sudo ip link set enp0s8 up
+ sudo ip addr flush dev $INTERFAZ_DHCP
+ sudo ip addr add $IP_SERVIDOR/24 dev $INTERFAZ_DHCP
+ sudo ip link set $INTERFAZ_DHCP up
 
-  sudo tee /etc/dhcpd.conf >/dev/null <<EOF
+ sudo tee /etc/dhcpd.conf >/dev/null <<EOF
  default-lease-time $LEASE_DEFAULT;
  max-lease-time $LEASE_MAX;
  authoritative;
@@ -158,14 +163,12 @@ read -p "Tiempo maxima (300 Normalmente): " LEASE_MAX
 }
 EOF
 
-
- echo "DHCPD_INTERFACE=enp0s8" | sudo tee /etc/sysconfig/dhcpd >/dev/null
+ echo "DHCPD_INTERFACE=$INTERFAZ_DHCP" | sudo tee /etc/sysconfig/dhcpd >/dev/null
 
  echo "Rangos configurados"
  echo "IP fija servidor: $IP_SERVIDOR"
  echo "Rango dhcp desde: $IP_RANGO_INICIAL hasta $IP_FINAL"
 }
-
 
 guardaryreiniciar() {
  echo "Verificando la configuracion"
@@ -179,22 +182,20 @@ guardaryreiniciar() {
  fi
  else
    echo "ERROR"
-fi
+ fi
 }
-
 
 monitoreo() {
  echo "Estado del servidor DHCP"
-if systemctl is-active --quiet dhcpd; then
- echo "Activado"
-else
- echo "Desactivado"
-fi
+ if systemctl is-active --quiet dhcpd; then
+  echo "Activado"
+ else
+  echo "Desactivado"
+ fi
  echo ""
  echo "Clientes conectados"
  grep "lease " /var/lib/dhcpd/dhcpd.leases 2>/dev/null
 }
-
 
 reset_dhcp() {
  sudo systemctl stop dhcpd 2>/dev/null

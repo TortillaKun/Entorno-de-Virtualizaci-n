@@ -34,6 +34,23 @@ fi
  return 0
 }
 
+#configurar dns local automatico
+configurar_dns_local() {
+
+if systemctl is-active --quiet named; then
+
+ sudo tee /etc/resolv.conf >/dev/null <<EOF
+nameserver 127.0.0.1
+EOF
+
+ echo "Servidor configurado para usar DNS local 127.0.0.1"
+
+else
+ echo "named no esta activo, no se modifico resolv.conf"
+fi
+
+}
+
 #instalar dns
 instalar() {
 
@@ -46,6 +63,8 @@ else
  systemctl start named
  echo "DNS instando correctamente"
 fi
+
+configurar_dns_local
 
 }
 
@@ -126,6 +145,9 @@ chown named:named $ZONA
 chmod 640 $ZONA
 
  systemctl restart named
+
+configurar_dns_local
+
  echo "Dominio $DOMINIO agregado correctamente"
 }
 
