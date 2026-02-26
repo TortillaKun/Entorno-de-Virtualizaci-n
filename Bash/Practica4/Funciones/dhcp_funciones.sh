@@ -1,7 +1,5 @@
 #!/bin/bash
 
-#VALIDACIONES
-
 validarip() {
  [[ $1 =~ ^([0-9]{1,3}[.]){3}[0-9]{1,3}$ ]] || return 1
  IFS='.' read -r oc1 oc2 oc3 oc4 <<< "$1"
@@ -47,9 +45,6 @@ misma_red() {
 obtener_mascara() {
  echo "255.255.255.0"
 }
-
-
-#FUNCIONES
 
 verificar_dhcp() {
  rpm -q dhcp-server &>/dev/null \
@@ -118,10 +113,7 @@ configurar_dhcp() {
 
  GATEWAY=${IP_SERVIDOR}
 
- # detectar interfaz ssh
  INTERFAZ_SSH=$(ip route | grep default | awk '{print $5}')
-
- # buscar otra interfaz distinta
  INTERFAZ_DHCP=$(ip -o link show | awk -F': ' '{print $2}' | grep -v lo | grep -v "$INTERFAZ_SSH" | head -n1)
 
  if [ -z "$INTERFAZ_DHCP" ]; then
@@ -135,7 +127,7 @@ configurar_dhcp() {
  read -p "DNS1 O enter para uno automatico: " DNS1
  read -p "DNS2 opcional: " DNS2
 
- [ -z "$DNS1" ] && DNS1="8.8.8.8"
+ [ -z "$DNS1" ] && DNS1="$IP_SERVIDOR"
  [ -z "$DNS2" ] && DNS_CONFIG="option domain-name-servers $DNS1;" || DNS_CONFIG="option domain-name-servers $DNS1, $DNS2;"
 
  read -p  "Tiempo default 300 (enter): " LEASE_DEFAULT
@@ -152,11 +144,11 @@ configurar_dhcp() {
  sudo ip link set $INTERFAZ_DHCP up
 
  sudo tee /etc/dhcpd.conf >/dev/null <<EOF
- default-lease-time $LEASE_DEFAULT;
- max-lease-time $LEASE_MAX;
- authoritative;
+default-lease-time $LEASE_DEFAULT;
+max-lease-time $LEASE_MAX;
+authoritative;
 
- subnet $red netmask $mascara {
+subnet $red netmask $mascara {
  range $IP_RANGO_INICIAL $IP_FINAL;
  option routers $GATEWAY;
  $DNS_CONFIG
@@ -168,6 +160,15 @@ EOF
  echo "Rangos configurados"
  echo "IP fija servidor: $IP_SERVIDOR"
  echo "Rango dhcp desde: $IP_RANGO_INICIAL hasta $IP_FINAL"
+
+ echo "Configurando resolv.conf automatico"
+
+ sudo chattr -i /etc/resolv.conf 2>/dev/null
+
+ sudo tee /etc/resolv.conf >/dev/null <<EOF
+nameserver $IP_SERVIDOR
+nameserver 8.8.8.8
+EOF
 }
 
 guardaryreiniciar() {
