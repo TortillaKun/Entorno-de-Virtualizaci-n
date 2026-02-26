@@ -1,5 +1,5 @@
 #!/bin/bash
-
+#scriptbueno
 validarip() {
  [[ $1 =~ ^([0-9]{1,3}[.]){3}[0-9]{1,3}$ ]] || return 1
  IFS='.' read -r oc1 oc2 oc3 oc4 <<< "$1"
