@@ -9,8 +9,8 @@ $ConfirmPreference = "None"
 
 if (-not $modulo) {
     Write-Host "Uso general:"
-    Write-Host ".\Main.ps1 dhcp instalar"
-    Write-Host ".\Main.ps1 dns instalar"
+    Write-Host ".\mainfinal.ps1 dhcp instalar"
+    Write-Host ".\mainfinal.ps1 dns instalar"
     return
 }
 
@@ -18,15 +18,14 @@ if (-not $modulo) {
 . "$PSScriptRoot\..\Funciones\FuncionesDNS.ps1"
 
 switch ($modulo.ToLower()) {
-
     "dhcp" {
         if (-not $accion) {
             Write-Host "Parametros DHCP disponibles:"
-            Write-Host ".\Main.ps1 dhcp verificar"
-            Write-Host ".\Main.ps1 dhcp instalar"
-            Write-Host ".\Main.ps1 dhcp configurar"
-            Write-Host ".\Main.ps1 dhcp monitoreo"
-            Write-Host ".\Main.ps1 dhcp reset"
+            Write-Host ".\mainfinal.ps1 dhcp verificar"
+            Write-Host ".\mainfinal.ps1 dhcp instalar"
+            Write-Host ".\mainfinal.ps1 dhcp configurar"
+            Write-Host ".\mainfinal.ps1 dhcp monitoreo"
+            Write-Host ".\mainfinal.ps1 dhcp reset"
             return
         }
         switch ($accion.ToLower()) {
@@ -42,12 +41,12 @@ switch ($modulo.ToLower()) {
     "dns" {
         if (-not $accion) {
             Write-Host "Parametros DNS disponibles:"
-            Write-Host ".\Main.ps1 dns instalar"
-            Write-Host ".\Main.ps1 dns estado"
-            Write-Host ".\Main.ps1 dns agregar dominio.com IP"
-            Write-Host ".\Main.ps1 dns listar"
-            Write-Host ".\Main.ps1 dns eliminar dominio.com"
-            Write-Host ".\Main.ps1 dns desinstalar"
+            Write-Host ".\mainfinal.ps1 dns instalar"
+            Write-Host ".\mainfinal.ps1 dns estado"
+            Write-Host ".\mainfinal.ps1 dns agregar dominio.com IP"
+            Write-Host ".\mainfinal.ps1 dns listar"
+            Write-Host ".\mainfinal.ps1 dns eliminar dominio.com"
+            Write-Host ".\mainfinal.ps1 dns desinstalar"
             return
         }
         switch ($accion.ToLower()) {
