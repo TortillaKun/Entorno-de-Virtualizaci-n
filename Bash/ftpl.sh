@@ -1,21 +1,14 @@
 #!/bin/bash
 
-# ============================================================
-# ftpl.sh - Servidor FTP para Mageia 9
-# Uso: ./ftpl.sh [verificar|instalar|usuarios|reiniciar|estado|listar|ayuda]
-# ============================================================
-
-# --- Colores ---
 verde="\e[32m"; rojo="\e[31m"; amarillo="\e[33m"
 cyan="\e[36m";  negrita="\e[1m"; nc="\e[0m"
 
-print_info()      { echo -e "${cyan}[INFO]  $*${nc}"; }
-print_ok()        { echo -e "${verde}[OK]    $*${nc}"; }
+print_info()      { echo -e "${white}[INFO]  $*${nc}"; }
+print_ok()        { echo -e "${white}[OK]    $*${nc}"; }
 print_error()     { echo -e "${rojo}[ERROR] $*${nc}"; }
-print_warn()      { echo -e "${amarillo}[WARN]  $*${nc}"; }
+print_warn()      { echo -e "${white}[WARN]  $*${nc}"; }
 print_titulo()    { echo -e "\n${negrita}${amarillo}=== $* ===${nc}\n"; }
 
-# --- Variables globales ---
 readonly FTP_ROOT="/srv/ftp"
 readonly GRUPO_REPROBADOS="reprobados"
 readonly GRUPO_RECURSADORES="recursadores"
@@ -25,42 +18,16 @@ readonly FTP_USERLIST="/etc/vsftpd/ftp_users"
 readonly FTPUSERS_BLACKLIST="/etc/vsftpd/ftpusers"
 readonly FTP_HOMES="/home/ftp_users"
 
-# --- Verificar root ---
 if [[ $EUID -ne 0 ]]; then
     print_error "Este script debe ejecutarse como root"
     exit 1
 fi
 
-# ============================================================
-# AYUDA
-# ============================================================
-ayuda() {
-    echo ""
-    echo -e "${negrita}Uso: ./ftpl.sh [comando]${nc}"
-    echo ""
-    echo "  verificar   Verifica si vsftpd esta instalado"
-    echo "  instalar    Instala y configura el servidor FTP"
-    echo "  usuarios    Gestionar usuarios FTP"
-    echo "  reiniciar   Reiniciar servidor FTP"
-    echo "  estado      Ver estado del servidor FTP"
-    echo "  listar      Listar usuarios y estructura FTP"
-    echo "  ayuda       Muestra esta ayuda"
-    echo ""
-}
-
-# ============================================================
-# FIX PAM - Mageia 9 requiere estas dos cosas:
-#   1. /sbin/nologin en /etc/shells
-#   2. PAM sin pam_shells ni pam_listfile
-# ============================================================
 fix_pam() {
-    # /sbin/nologin debe estar en /etc/shells
     grep -qx "/sbin/nologin" /etc/shells || {
         echo "/sbin/nologin" >> /etc/shells
         print_ok "/sbin/nologin agregado a /etc/shells"
     }
-
-    # PAM minimo sin modulos que bloqueen nologin
     cat > /etc/pam.d/vsftpd << 'EOF'
 #%PAM-1.0
 auth     required    pam_unix.so     shadow nullok
@@ -70,9 +37,6 @@ EOF
     print_ok "PAM vsftpd configurado"
 }
 
-# ============================================================
-# QUITAR USUARIO DE LISTA NEGRA
-# ============================================================
 fix_blacklist() {
     local usuario="$1"
     [[ -f "$FTPUSERS_BLACKLIST" ]] && \
@@ -82,9 +46,6 @@ fix_blacklist() {
     }
 }
 
-# ============================================================
-# VERIFICAR INSTALACION
-# ============================================================
 verificar() {
     print_info "Verificando instalacion de vsftpd..."
     if rpm -q vsftpd &>/dev/null; then
@@ -97,9 +58,6 @@ verificar() {
     return 1
 }
 
-# ============================================================
-# CREAR GRUPOS
-# ============================================================
 crear_grupos() {
     print_info "Verificando grupos..."
     for grupo in "$GRUPO_REPROBADOS" "$GRUPO_RECURSADORES"; do
@@ -112,9 +70,6 @@ crear_grupos() {
     done
 }
 
-# ============================================================
-# CREAR ESTRUCTURA DE DIRECTORIOS
-# ============================================================
 crear_estructura() {
     print_info "Creando estructura de directorios..."
 
@@ -132,18 +87,20 @@ crear_estructura() {
         [[ -d "$dir" ]] || { mkdir -p "$dir" && print_ok "Creado: $dir"; }
     done
 
-    # Permisos base
-    chown root:root "$FTP_ROOT"         && chmod 755 "$FTP_ROOT"
-    chown root:root "$FTP_ROOT/personal" && chmod 755 "$FTP_ROOT/personal"
+    # Raiz FTP: root la posee, no escribible por nadie externo
+    chown root:root "$FTP_ROOT"          && chmod 755 "$FTP_ROOT"
     chown root:root "$FTP_HOMES"         && chmod 755 "$FTP_HOMES"
 
-    # general: lectura/escritura para todos, sticky bit
+    # general: la jaula del anonimo
+    # - Propiedad de root:root (vsftpd exige que la raiz de jaula sea de root)
+    # - Permisos 755: el anonimo puede listar y descargar, nadie puede escribir
     chown root:root "$FTP_ROOT/general"
-    chmod 777 "$FTP_ROOT/general"
-    chmod +t  "$FTP_ROOT/general"
+    chmod 755 "$FTP_ROOT/general"
 
-    # grupos: solo miembros + sticky bit
-    chown root:"$GRUPO_REPROBADOS"  "$FTP_ROOT/$GRUPO_REPROBADOS"
+    # Carpeta personal (montada en jaulas de usuarios autenticados)
+    chown root:root "$FTP_ROOT/personal" && chmod 755 "$FTP_ROOT/personal"
+
+    chown root:"$GRUPO_REPROBADOS"   "$FTP_ROOT/$GRUPO_REPROBADOS"
     chmod 770 "$FTP_ROOT/$GRUPO_REPROBADOS"
     chmod +t  "$FTP_ROOT/$GRUPO_REPROBADOS"
 
@@ -154,13 +111,6 @@ crear_estructura() {
     print_ok "Estructura lista"
 }
 
-# ============================================================
-# CONFIGURAR VSFTPD
-# NOTAS MAGEIA 9:
-#   - systemd usa /etc/vsftpd/vsftpd.conf (hardcodeado)
-#   - pam_service_name=vsftpd es OBLIGATORIO en Mageia
-#   - local_root apunta a la carpeta personal del usuario
-# ============================================================
 configurar_vsftpd() {
     print_info "Configurando vsftpd..."
 
@@ -169,53 +119,54 @@ configurar_vsftpd() {
 
     mkdir -p "$VSFTPD_USER_DIR"
 
-    # Lista blanca limpia
-    printf "anonymous\nftp\n" > "$FTP_USERLIST"
+    # Lista blanca de usuarios autenticados (el anonimo NO va aqui)
+    : > "$FTP_USERLIST"
 
     cat > "$VSFTPD_CONF" << EOF
-# vsftpd.conf - Mageia 9
-# Generado por ftpl.sh
-
 listen=YES
 listen_ipv6=NO
 
-# --- Usuarios locales ---
+# --- Usuarios locales autenticados ---
 local_enable=YES
 write_enable=YES
 local_umask=022
 
-# --- Anonimo: solo lectura en /general ---
+# --- Anonimo: entra sin usuario ni contrasena, solo ve /general ---
 anonymous_enable=YES
+ftp_username=ftp
 anon_root=$FTP_ROOT/general
 no_anon_password=YES
 anon_upload_enable=NO
 anon_mkdir_write_enable=NO
 anon_other_write_enable=NO
+anon_world_readable_only=YES
 
-# --- Chroot: jaula por usuario ---
-# El usuario entra directamente a su carpeta personal
+# --- Jaula (chroot) para usuarios autenticados ---
 chroot_local_user=YES
 allow_writeable_chroot=YES
 user_sub_token=\$USER
 local_root=$FTP_HOMES/\$USER
 user_config_dir=$VSFTPD_USER_DIR
 
-# --- Seguridad ---
+# --- Lista blanca: SOLO usuarios autenticados la usan ---
+# El anonimo NO pasa por esta lista, vsftpd lo maneja aparte
+userlist_enable=YES
+userlist_file=$FTP_USERLIST
+userlist_deny=NO
+
+# --- PAM: solo para autenticados, el anonimo lo omite vsftpd ---
+pam_service_name=vsftpd
+
+# --- Seguridad y opciones generales ---
 hide_ids=YES
 use_localtime=YES
-
-# --- Logs ---
 xferlog_enable=YES
 xferlog_file=/var/log/vsftpd.log
 log_ftp_protocol=YES
 xferlog_std_format=YES
-
-# --- Conexion ---
 connect_from_port_20=YES
 idle_session_timeout=600
 data_connection_timeout=120
-
-# --- Mensajes ---
 dirmessage_enable=YES
 ftpd_banner=Bienvenido al servidor FTP
 
@@ -224,31 +175,31 @@ pasv_enable=YES
 pasv_min_port=40000
 pasv_max_port=40100
 
-# --- Lista blanca de usuarios ---
-userlist_enable=YES
-userlist_file=$FTP_USERLIST
-userlist_deny=NO
-
-# --- PAM: OBLIGATORIO en Mageia 9 ---
-pam_service_name=vsftpd
+# --- Compatibilidad Mageia / RHEL ---
+seccomp_sandbox=NO
 EOF
 
-    # Sincronizar con /etc/vsftpd.conf por si acaso
+    # Sincronizar con /etc/vsftpd.conf si existe (Mageia lo puede usar tambien)
     cp "$VSFTPD_CONF" /etc/vsftpd.conf 2>/dev/null
 
-    # Usuario ftp para acceso anonimo
+    # Crear/ajustar usuario ftp del sistema (jaula del anonimo)
     if ! id ftp &>/dev/null; then
         useradd -r -d "$FTP_ROOT/general" -s /sbin/nologin ftp
-        print_ok "Usuario 'ftp' creado"
+        print_ok "Usuario 'ftp' del sistema creado"
+    else
+        usermod -d "$FTP_ROOT/general" ftp 2>/dev/null
     fi
+
+    # La raiz de la jaula anonima debe ser propiedad de root
+    chown root:root "$FTP_ROOT/general"
+    chmod 755 "$FTP_ROOT/general"
+
+    # Asegurarse de que ftp no este en la lista negra
     fix_blacklist "ftp"
 
     print_ok "vsftpd configurado"
 }
 
-# ============================================================
-# CONFIGURAR FIREWALL
-# ============================================================
 configurar_firewall() {
     print_info "Configurando firewall..."
     if systemctl is-active --quiet firewalld; then
@@ -266,18 +217,6 @@ configurar_firewall() {
     fi
 }
 
-# ============================================================
-# CONSTRUIR JAULA CON BIND MOUNTS
-#
-# Estructura que ve el usuario al conectar:
-#   /                    <- raiz de la jaula (root:root 755)
-#   /general/            <- bind mount a /srv/ftp/general
-#   /<grupo>/            <- bind mount a /srv/ftp/<grupo>
-#   /<usuario>/          <- carpeta personal (bind mount a /srv/ftp/personal/<usuario>)
-#
-# El local_root apunta a /home/ftp_users/<usuario>
-# que es la raiz de la jaula (root:root 755)
-# ============================================================
 construir_jaula() {
     local usuario="$1"
     local grupo="$2"
@@ -285,12 +224,10 @@ construir_jaula() {
 
     print_info "Construyendo jaula para '$usuario'..."
 
-    # Raiz de la jaula: root:root 755 (vsftpd lo exige)
     mkdir -p "$jaula"
     chown root:root "$jaula"
     chmod 755 "$jaula"
 
-    # Puntos de montaje dentro de la jaula
     mkdir -p "$jaula/general"
     mkdir -p "$jaula/$grupo"
     mkdir -p "$jaula/$usuario"
@@ -299,7 +236,6 @@ construir_jaula() {
     chown root:root "$jaula/$grupo"   && chmod 755 "$jaula/$grupo"
     chown "$usuario":"$grupo" "$jaula/$usuario" && chmod 700 "$jaula/$usuario"
 
-    # Bind mounts
     mountpoint -q "$jaula/general" 2>/dev/null || {
         mount --bind "$FTP_ROOT/general" "$jaula/general"
         print_ok "Bind mount: general"
@@ -310,12 +246,18 @@ construir_jaula() {
         print_ok "Bind mount: $grupo"
     }
 
+    local personal="$FTP_ROOT/personal/$usuario"
+    [[ -d "$personal" ]] || {
+        mkdir -p "$personal"
+        chown "$usuario":"$grupo" "$personal"
+        chmod 700 "$personal"
+    }
+
     mountpoint -q "$jaula/$usuario" 2>/dev/null || {
-        mount --bind "$FTP_ROOT/personal/$usuario" "$jaula/$usuario"
+        mount --bind "$personal" "$jaula/$usuario"
         print_ok "Bind mount: $usuario (personal)"
     }
 
-    # Persistencia en fstab
     local entries=(
         "$FTP_ROOT/general $jaula/general none bind 0 0"
         "$FTP_ROOT/$grupo $jaula/$grupo none bind 0 0"
@@ -325,15 +267,10 @@ construir_jaula() {
         grep -Fx "$entry" /etc/fstab &>/dev/null || echo "$entry" >> /etc/fstab
     done
 
-    # Config individual: local_root apunta a la jaula
     echo "local_root=$jaula" > "$VSFTPD_USER_DIR/$usuario"
-
     print_ok "Jaula lista: $jaula"
 }
 
-# ============================================================
-# DESTRUIR JAULA
-# ============================================================
 destruir_jaula() {
     local usuario="$1"
     local jaula="$FTP_HOMES/$usuario"
@@ -353,9 +290,6 @@ destruir_jaula() {
     print_ok "Jaula eliminada"
 }
 
-# ============================================================
-# VALIDAR NOMBRE DE USUARIO
-# ============================================================
 validar_usuario() {
     local u="$1"
     [[ -z "$u" ]]                       && print_error "Nombre vacio"                    && return 1
@@ -365,27 +299,20 @@ validar_usuario() {
     return 0
 }
 
-# ============================================================
-# VALIDAR CONTRASENA
-# ============================================================
 validar_contrasena() {
     local p="$1"
-    [[ ${#p} -lt 8 ]]            && print_error "Minimo 8 caracteres"      && return 1
-    [[ ! "$p" =~ [A-Z] ]]        && print_error "Necesita una mayuscula"   && return 1
-    [[ ! "$p" =~ [0-9] ]]        && print_error "Necesita un numero"       && return 1
+    [[ ${#p} -lt 8 ]]            && print_error "Minimo 8 caracteres"         && return 1
+    [[ ! "$p" =~ [A-Z] ]]        && print_error "Necesita una mayuscula"      && return 1
+    [[ ! "$p" =~ [0-9] ]]        && print_error "Necesita un numero"          && return 1
     [[ ! "$p" =~ [^a-zA-Z0-9] ]] && print_error "Necesita un simbolo (@#\$%)" && return 1
     return 0
 }
 
-# ============================================================
-# CREAR USUARIO FTP
-# ============================================================
 crear_usuario() {
     local usuario="$1"
     local password="$2"
     local grupo="$3"
 
-    # Crear usuario del sistema
     useradd -M -s /sbin/nologin \
         -d "$FTP_HOMES/$usuario" \
         -g "$grupo" \
@@ -396,7 +323,6 @@ crear_usuario() {
     }
     print_ok "Usuario del sistema creado"
 
-    # Establecer contrasena
     echo "$usuario:$password" | chpasswd || {
         print_error "Error al establecer contrasena"
         userdel "$usuario" 2>/dev/null
@@ -404,38 +330,24 @@ crear_usuario() {
     }
     print_ok "Contrasena establecida"
 
-    # Quitar de lista negra y agregar a lista blanca
     fix_blacklist "$usuario"
     grep -qx "$usuario" "$FTP_USERLIST" 2>/dev/null || echo "$usuario" >> "$FTP_USERLIST"
 
-    # Crear carpeta personal real en /srv/ftp/personal/
-    local personal="$FTP_ROOT/personal/$usuario"
-    [[ -d "$personal" ]] || {
-        mkdir -p "$personal"
-        chown "$usuario":"$grupo" "$personal"
-        chmod 700 "$personal"
-        print_ok "Carpeta personal: $personal"
-    }
-
-    # Construir jaula
     construir_jaula "$usuario" "$grupo"
 
     echo ""
-    print_ok "════════════════════════════════════════"
+    print_ok ""
     print_ok "  Usuario '$usuario' creado"
-    print_ok "════════════════════════════════════════"
+    print_ok ""
     print_info "  Grupo    : $grupo"
     print_info "  Al conectar ve:"
-    print_info "    /general/   (compartida)"
-    print_info "    /$grupo/    (su grupo)"
-    print_info "    /$usuario/  (personal)"
-    print_ok "════════════════════════════════════════"
+    print_info "    /general/"
+    print_info "    /$grupo/"
+    print_info "    /$usuario/"
+    print_ok ""
     return 0
 }
 
-# ============================================================
-# CAMBIAR GRUPO DE USUARIO
-# ============================================================
 cambiar_grupo() {
     local usuario="$1"
 
@@ -483,11 +395,8 @@ cambiar_grupo() {
     print_ok "Usuario '$usuario' -> '$nuevo_grupo' - reconecta FileZilla"
 }
 
-# ============================================================
-# LISTAR USUARIOS FTP
-# ============================================================
 listar() {
-    print_titulo "Usuarios FTP"
+    print_titulo "UsuariosFTP"
 
     if [[ ! -s "$FTP_USERLIST" ]]; then
         print_info "No hay usuarios FTP configurados"
@@ -519,9 +428,6 @@ listar() {
     echo ""
 }
 
-# ============================================================
-# ESTADO DEL SERVIDOR
-# ============================================================
 estado() {
     print_titulo "Estado del Servidor FTP"
 
@@ -538,6 +444,23 @@ estado() {
     print_info "IP servidor: $ip"
 
     echo ""
+    print_info "Checks anonimo:"
+    id ftp &>/dev/null \
+        && print_ok "  Usuario 'ftp' existe" \
+        || print_warn "  Usuario 'ftp' NO existe"
+    [[ -d "$FTP_ROOT/general" ]] \
+        && print_ok "  $FTP_ROOT/general existe" \
+        || print_warn "  $FTP_ROOT/general NO existe"
+    local perms
+    perms=$(stat -c "%a" "$FTP_ROOT/general" 2>/dev/null)
+    [[ "$perms" == "755" ]] \
+        && print_ok "  Permisos de /general correctos (755)" \
+        || print_warn "  Permisos de /general: $perms (se necesita 755)"
+    grep -qx "ftp" "$FTPUSERS_BLACKLIST" 2>/dev/null \
+        && print_warn "  'ftp' esta en la lista negra ftpusers (bloquea anonimo)" \
+        || print_ok "  'ftp' NO esta en la lista negra"
+
+    echo ""
     print_info "Checks PAM:"
     grep -qx "/sbin/nologin" /etc/shells \
         && print_ok "  /sbin/nologin en /etc/shells" \
@@ -545,19 +468,13 @@ estado() {
     grep -q "pam_unix" /etc/pam.d/vsftpd 2>/dev/null \
         && print_ok "  PAM vsftpd correcto" \
         || print_warn "  PAM vsftpd tiene problemas"
-    grep -q "pam_service_name" "$VSFTPD_CONF" 2>/dev/null \
-        && print_ok "  pam_service_name configurado" \
-        || print_warn "  pam_service_name FALTA en vsftpd.conf"
 
     echo ""
     listar
 }
 
-# ============================================================
-# REINICIAR
-# ============================================================
 reiniciar() {
-    print_info "Reiniciando vsftpd..."
+    print_info "Reiniciando vsftpd"
     systemctl restart vsftpd
     sleep 1
     systemctl is-active --quiet vsftpd \
@@ -565,11 +482,8 @@ reiniciar() {
         || print_error "Fallo al reiniciar vsftpd"
 }
 
-# ============================================================
-# INSTALAR
-# ============================================================
 instalar() {
-    print_titulo "Instalacion del Servidor FTP - Mageia 9"
+    print_titulo "Instalacion"
 
     if verificar 2>/dev/null; then
         echo ""
@@ -611,28 +525,26 @@ instalar() {
     ip=$(hostname -I | awk '{print $1}')
 
     echo ""
-    print_ok "════════════════════════════════════════"
+    print_ok ""
     print_ok "  Servidor FTP listo"
-    print_ok "════════════════════════════════════════"
+    print_ok ""
     print_info "  IP     : ftp://$ip"
     print_info "  Puerto : 21"
-    print_info "  Anonimo  -> /general (solo lectura)"
-    print_info "  Usuarios -> ./ftpl.sh usuarios"
-    print_ok "════════════════════════════════════════"
+    print_info "  Anonimo  -> conecta sin usuario ni contrasena"
+    print_info ""
+    print_info "  Usuarios -> ./ftpl.sh users"
+    print_ok ""
 }
 
-# ============================================================
-# GESTIONAR USUARIOS
-# ============================================================
 usuarios() {
     print_titulo "Gestion de Usuarios FTP"
 
     verificar &>/dev/null || {
-        print_error "vsftpd no instalado. Ejecuta: ./ftpl.sh instalar"
+        print_error "vsftpd no instalado. Ejecuta: ./ftpl.sh install"
         return 1
     }
 
-    echo "1) Crear usuario(s)"
+    echo "1) Crear usuarios"
     echo "2) Cambiar grupo"
     echo "3) Eliminar usuario"
     echo ""
@@ -703,16 +615,12 @@ usuarios() {
     esac
 }
 
-# ============================================================
-# MAIN
-# ============================================================
 case "${1:-}" in
-    verificar)  verificar  ;;
-    instalar)   instalar   ;;
-    usuarios)   usuarios   ;;
-    reiniciar)  reiniciar  ;;
-    estado)     estado     ;;
-    listar)     listar     ;;
-    ayuda)      ayuda      ;;
-    *)          ayuda      ;;
+    verify)   verificar  ;;
+    install)  instalar   ;;
+    users)    usuarios   ;;
+    restart)  reiniciar  ;;
+    status)   estado     ;;
+    list)     listar     ;;
+    *)        echo -e "\nUso: ./ftpl.sh [verify|install|users|restart|status|list]\n" ;;
 esac
